@@ -8,9 +8,9 @@ import "./RevertMessage.sol";
 
 contract Wallet2fa {
     address public controller;
-    address payable public coldStorage;
-    address public authenticator;
-    bytes32 public killPhraseHash;
+    address payable coldStorage;
+    address authenticator;
+    bytes32 killPhraseHash;
     uint256 nonce;
 
     struct MetaTx {
