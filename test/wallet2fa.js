@@ -22,9 +22,18 @@ describe("2fa Wallet", function () {
   async function logController () {
     console.log('balance: ' + ethers.utils.formatEther(await ethers.provider.getBalance(controller.getAddress())))
   }
+  async function getCurrentNonceHashSig () {
+    //get contract nonce
+    const nonce = await buidler2faWallet.nonce()
+    const nonceHash = ethers.utils.keccak256(ethers.utils.hexZeroPad(nonce, 32))
+
+    //sign nonce
+    return { nonce, sig: await authenticatorWallet.signMessage(ethers.utils.arrayify(nonceHash)) }
+
+  }
+
   before(async function () {
     [controller, coldStorage] = await ethers.getSigners();
-    await logController()
     //TODO generate authenticator address
     authenticatorWallet = await ethers.Wallet.createRandom()
     authenticator = authenticatorWallet.address
@@ -44,22 +53,16 @@ describe("2fa Wallet", function () {
 
 
   it("can send funds", async function () {
-    await logController()
     const walletBalance = await sendEthToWallet()
-    await logController()
     const metaTx = [await coldStorage.getAddress(), ethers.utils.parseEther("0.5"), '0x']
 
-    //get contract nonce
-    const nonce = await buidler2faWallet.nonce()
-    const nonceHash = ethers.utils.keccak256(ethers.utils.hexZeroPad(nonce, 32))
 
-    //sign nonce
-    const sig = await authenticatorWallet.signMessage(ethers.utils.arrayify(nonceHash))
+    const { nonce, sig } = await getCurrentNonceHashSig()
+    console.log('sig: ' + sig)
 
     const coldStorageInitBalance = await ethers.provider.getBalance(coldStorage.getAddress())
 
     const result = await buidler2faWallet.execute(metaTx, sig)
-    await logController()
 
     const coldStorageEndBalance = await ethers.provider.getBalance(coldStorage.getAddress())
     expect(coldStorageInitBalance).to.equal(coldStorageEndBalance.sub(ethers.utils.parseEther("0.5")));
@@ -68,44 +71,92 @@ describe("2fa Wallet", function () {
     expect(nonce).to.equal(newNonce.add(- 1));
   });
   it("can't send funds if insufficient", async function () {
-    await logController()
     const walletBalance = await sendEthToWallet()
-    await logController()
 
     const metaTx = [await coldStorage.getAddress(), ethers.utils.parseEther("1.5"), '0x']
 
-    //get contract nonce
-    const nonce = await buidler2faWallet.nonce()
-    const nonceHash = ethers.utils.keccak256(ethers.utils.hexZeroPad(nonce, 32))
-
-    //sign nonce
-    const sig = await authenticatorWallet.signMessage(ethers.utils.arrayify(nonceHash))
-
+    const { nonce, sig } = await getCurrentNonceHashSig()
     const coldStorageInitBalance = await ethers.provider.getBalance(coldStorage.getAddress())
 
     const result = await buidler2faWallet.execute(metaTx, sig)
-    await logController()
+    //TODO look for revert event
+    const events = buidler2faWallet.filters.Revert()
 
     const coldStorageEndBalance = await ethers.provider.getBalance(coldStorage.getAddress())
     expect(coldStorageInitBalance).to.equal(coldStorageEndBalance);
     const newNonce = await buidler2faWallet.nonce()
     console.log("nonce:" + newNonce.toString())
-    expect(nonce).to.equal(newNonce);
+    expect(nonce).to.equal(newNonce.add(- 1));
   });
 
-  // it("can call contract", async function () {
-  //   const Token = await ethers.getContractFactory("TetherToken");
+  it("can call contract", async function () {
+    const Token = await ethers.getContractFactory("TetherToken");
 
-  //   buidlerToken = await Token.deploy(1000000, 'Tether USD', 'TUSD', 6);
-  //   await buidlerToken.deployed();
-  //   const walletBalance = await sendEthToWallet()
+    buidlerToken = await Token.deploy(1000000, 'Tether USD', 'TUSD', 6);
+    await buidlerToken.deployed();
+    //Send TetherToken to 2faWallet
+    await buidlerToken.transfer(buidler2faWallet.address, 1000)
 
-  //   //const data =
-  //   const metaTx = [await buidlerToken.address, ethers.utils.parseEther("0.0"), data]
+    const walletBalance = await buidlerToken.balanceOf(buidler2faWallet.address)
 
-  // })
+    //get raw tx, which requests transfer to coldstorage account
+    const tx = await buidlerToken.populateTransaction.transfer(coldStorage.getAddress(), 1000)
 
-  //TODO it("can call contract that reverts", async function () {
+    const metaTx = [await buidlerToken.address, ethers.utils.parseEther("0.0"), tx.data]
+
+    const { nonce, sig } = await getCurrentNonceHashSig()
+
+    await logController()
+    const result = await buidler2faWallet.execute(metaTx, sig)
+    const events = buidler2faWallet.filters.Revert()
+    console.log(events)
+
+    await logController()
+
+    const newBalance = await buidlerToken.balanceOf(coldStorage.getAddress())
+
+    expect(newBalance).to.equal(1000);
+    const newNonce = await buidler2faWallet.nonce()
+    console.log("nonce:" + newNonce.toString())
+    expect(nonce).to.equal(newNonce.add(- 1));
+
+  })
+
+  it("can call contract that reverts", async function () {
+    const Token = await ethers.getContractFactory("TetherToken");
+
+    buidlerToken = await Token.deploy(1000000, 'Tether USD', 'TUSD', 6);
+    await buidlerToken.deployed();
+    //Send TetherToken to 2faWallet
+    await buidlerToken.transfer(buidler2faWallet.address, 1000)
+
+    const walletBalance = await buidlerToken.balanceOf(buidler2faWallet.address)
+
+    //get raw tx, which requests transfer to coldstorage account, send too many tokens and check for revert
+    const tx = await buidlerToken.populateTransaction.transfer(coldStorage.getAddress(), 1500)
+
+    const metaTx = [await buidlerToken.address, ethers.utils.parseEther("0.0"), tx.data]
+
+    const { nonce, sig } = await getCurrentNonceHashSig()
+
+    let events = await buidler2faWallet.queryFilter(buidler2faWallet.filters.Revert())
+    const result = await buidler2faWallet.execute(metaTx, sig)
+
+    let updatedEvents = await buidler2faWallet.queryFilter(buidler2faWallet.filters.Revert())
+    expect(events.length).to.equal(updatedEvents.length - 1)
+
+
+    //await logController()
+
+    const newBalance = await buidlerToken.balanceOf(coldStorage.getAddress())
+
+    expect(newBalance).to.equal(0);
+    const newNonce = await buidler2faWallet.nonce()
+    console.log("nonce:" + newNonce.toString())
+    expect(nonce).to.equal(newNonce.add(- 1));
+
+  })
+
 
   it("can be killed", async function () {
 

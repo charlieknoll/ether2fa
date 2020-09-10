@@ -28,12 +28,4 @@ library RevertMessage {
         }
         return abi.decode(_returnData, (string)); // All that remains is the revert string
     }
-
-    /**
-     * Extracts the revert message and emits it.
-     * @param _returnData Data returned by the call
-     */
-    function emitRevert(bytes memory _returnData) internal {
-        emit Revert(getRevertMsg(_returnData));
-    }
 }

@@ -13,7 +13,7 @@ contract Wallet2fa {
     address authenticator;
     bytes32 killPhraseHash;
     uint256 public nonce;
-
+    event Revert(string reason);
     struct MetaTx {
         address to;
         uint256 value;
@@ -34,15 +34,6 @@ contract Wallet2fa {
 
     receive() external payable {}
 
-    // function testHashedNonce() public view returns (bytes32) {
-    //     return keccak256(abi.encodePacked(nonce));
-    // }
-
-    // function testPackedNonce() public view returns (bytes memory) {
-    //     return abi.encodePacked(bytes32(nonce));
-    // }
-
-    //only controller
     function execute(MetaTx memory _metaTx, bytes memory _authSignature)
         public
         returns (bool, bytes memory)
@@ -70,11 +61,11 @@ contract Wallet2fa {
         (success, returnData) = _metaTx.to.call{value: _metaTx.value}(
             abi.encodePacked(_metaTx.data)
         );
+        //always increment wallet nonce to prevent the auth ticket from being reused
+        nonce = nonce + 1;
         if (!success) {
-            RevertMessage.emitRevert(returnData);
-        }
-        if (success) {
-            nonce = nonce + 1;
+            console.log("Emitting revert...");
+            emit Revert(RevertMessage.getRevertMsg(returnData));
         }
         return (success, returnData);
     }
