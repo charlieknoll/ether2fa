@@ -5,13 +5,14 @@ pragma experimental ABIEncoderV2;
 
 import "./ECDSA.sol";
 import "./RevertMessage.sol";
+import "@nomiclabs/buidler/console.sol";
 
 contract Wallet2fa {
     address public controller;
-    address payable coldStorage;
+    address payable public coldStorage;
     address authenticator;
     bytes32 killPhraseHash;
-    uint256 nonce;
+    uint256 public nonce;
 
     struct MetaTx {
         address to;
@@ -33,6 +34,14 @@ contract Wallet2fa {
 
     receive() external payable {}
 
+    // function testHashedNonce() public view returns (bytes32) {
+    //     return keccak256(abi.encodePacked(nonce));
+    // }
+
+    // function testPackedNonce() public view returns (bytes memory) {
+    //     return abi.encodePacked(bytes32(nonce));
+    // }
+
     //only controller
     function execute(MetaTx memory _metaTx, bytes memory _authSignature)
         public
@@ -44,7 +53,8 @@ contract Wallet2fa {
         );
 
         //Add chainId for replay protection?
-        bytes32 hashedNonce = keccak256(abi.encode(nonce));
+        bytes32 hashedNonce = keccak256(abi.encodePacked(nonce));
+
         address signer = ECDSA.recover(
             ECDSA.toEthSignedMessageHash(hashedNonce),
             _authSignature
@@ -73,7 +83,7 @@ contract Wallet2fa {
     function kill(string memory _killPhrase) public {
         //verify sha3(_killPhrase) = killPhraseHash
         require(
-            killPhraseHash == keccak256(abi.encode(_killPhrase)),
+            killPhraseHash == keccak256(abi.encodePacked(_killPhrase)),
             "Killphrase not valid"
         );
 

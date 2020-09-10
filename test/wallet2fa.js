@@ -1,16 +1,32 @@
 const { expect } = require("chai");
 
-
 describe("2fa Wallet", function () {
-  let buidler2faWallet, controller, authenticator, coldStorage
+  let buidler2faWallet, controller, authenticatorWallet, authenticator, coldStorage
   const killphrase = 'brain surround have swap horror body response double fire dumb bring hazard'
-  const killphraseHash = ethers.utils.id(killphrase)
+  //const killphraseHash = ethers.utils.id(killphrase)
+  const killphraseHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(killphrase))
+  async function sendEthToWallet () {
+    let walletBalance = await ethers.provider.getBalance(buidler2faWallet.address)
+    if (walletBalance.toString() == "0") {
+      tx = {
+        to: buidler2faWallet.address,
+        value: ethers.utils.parseEther("1.0")
+      }
 
+      //await controller.signTransaction(tx)
+      const sentTx = await controller.sendTransaction(tx)
+      walletBalance = await ethers.provider.getBalance(buidler2faWallet.address)
+    }
+    return walletBalance
+  }
+  async function logController () {
+    console.log('balance: ' + ethers.utils.formatEther(await ethers.provider.getBalance(controller.getAddress())))
+  }
   before(async function () {
     [controller, coldStorage] = await ethers.getSigners();
-
+    await logController()
     //TODO generate authenticator address
-    const authenticatorWallet = await ethers.Wallet.createRandom()
+    authenticatorWallet = await ethers.Wallet.createRandom()
     authenticator = authenticatorWallet.address
 
     const Wallet2fa = await ethers.getContractFactory("Wallet2fa");
@@ -21,32 +37,94 @@ describe("2fa Wallet", function () {
   })
 
 
-  it("Wallet should accept ether", async function () {
-
-    tx = {
-      to: buidler2faWallet.address,
-      value: ethers.utils.parseEther("1.0")
-    }
-
-    //await controller.signTransaction(tx)
-    const sentTx = await controller.sendTransaction(tx)
-
-    const walletBalance = await ethers.provider.getBalance(buidler2faWallet.address)
+  it("should accept ether", async function () {
+    const walletBalance = await sendEthToWallet()
     expect(walletBalance).to.equal(ethers.utils.parseEther("1.0"));
   });
-  // it("Owner can transfer to addr1", async function () {
-  //   await buidlerToken.transfer(addr1.getAddress(), 1000)
-  //   const addr1Balance = await buidlerToken.balanceOf(addr1.getAddress());
-  //   expect(await buidlerToken.balanceOf(addr1.getAddress())).to.equal(addr1Balance);
-  // });
 
-  // it("Addr1 can transfer to addr2", async function () {
-  //   await buidlerToken.connect(addr1).transfer(addr2.getAddress(), 500)
-  //   const addr1Balance = await buidlerToken.balanceOf(addr1.getAddress());
-  //   expect(await buidlerToken.balanceOf(addr1.getAddress())).to.equal(addr1Balance);
-  //   expect(await buidlerToken.balanceOf(addr2.getAddress())).to.equal(addr1Balance);
-  //   console.info(`Addr2 now has: ${addr1Balance.toNumber()} TUSD`)
-  // });
+
+  it("can send funds", async function () {
+    await logController()
+    const walletBalance = await sendEthToWallet()
+    await logController()
+    const metaTx = [await coldStorage.getAddress(), ethers.utils.parseEther("0.5"), '0x']
+
+    //get contract nonce
+    const nonce = await buidler2faWallet.nonce()
+    const nonceHash = ethers.utils.keccak256(ethers.utils.hexZeroPad(nonce, 32))
+
+    //sign nonce
+    const sig = await authenticatorWallet.signMessage(ethers.utils.arrayify(nonceHash))
+
+    const coldStorageInitBalance = await ethers.provider.getBalance(coldStorage.getAddress())
+
+    const result = await buidler2faWallet.execute(metaTx, sig)
+    await logController()
+
+    const coldStorageEndBalance = await ethers.provider.getBalance(coldStorage.getAddress())
+    expect(coldStorageInitBalance).to.equal(coldStorageEndBalance.sub(ethers.utils.parseEther("0.5")));
+    const newNonce = await buidler2faWallet.nonce()
+    console.log("nonce:" + newNonce.toString())
+    expect(nonce).to.equal(newNonce.add(- 1));
+  });
+  it("can't send funds if insufficient", async function () {
+    await logController()
+    const walletBalance = await sendEthToWallet()
+    await logController()
+
+    const metaTx = [await coldStorage.getAddress(), ethers.utils.parseEther("1.5"), '0x']
+
+    //get contract nonce
+    const nonce = await buidler2faWallet.nonce()
+    const nonceHash = ethers.utils.keccak256(ethers.utils.hexZeroPad(nonce, 32))
+
+    //sign nonce
+    const sig = await authenticatorWallet.signMessage(ethers.utils.arrayify(nonceHash))
+
+    const coldStorageInitBalance = await ethers.provider.getBalance(coldStorage.getAddress())
+
+    const result = await buidler2faWallet.execute(metaTx, sig)
+    await logController()
+
+    const coldStorageEndBalance = await ethers.provider.getBalance(coldStorage.getAddress())
+    expect(coldStorageInitBalance).to.equal(coldStorageEndBalance);
+    const newNonce = await buidler2faWallet.nonce()
+    console.log("nonce:" + newNonce.toString())
+    expect(nonce).to.equal(newNonce);
+  });
+
+  // it("can call contract", async function () {
+  //   const Token = await ethers.getContractFactory("TetherToken");
+
+  //   buidlerToken = await Token.deploy(1000000, 'Tether USD', 'TUSD', 6);
+  //   await buidlerToken.deployed();
+  //   const walletBalance = await sendEthToWallet()
+
+  //   //const data =
+  //   const metaTx = [await buidlerToken.address, ethers.utils.parseEther("0.0"), data]
+
+  // })
+
+  //TODO it("can call contract that reverts", async function () {
+
+  it("can be killed", async function () {
+
+    await sendEthToWallet()
+
+    const coldStorageBalance = await ethers.provider.getBalance(coldStorage.getAddress())
+    let code = await ethers.provider.getCode(buidler2faWallet.address)
+
+    let result = await buidler2faWallet.kill(killphrase)
+
+    const newColdStorageBalance = await ethers.provider.getBalance(coldStorage.getAddress())
+    expect(coldStorageBalance).to.below(newColdStorageBalance);
+
+    code = await ethers.provider.getCode(buidler2faWallet.address)
+    expect(code).to.equal('0x')
+
+  });
+
+  //TODO test 1000's of nonce's
 });
 
 
