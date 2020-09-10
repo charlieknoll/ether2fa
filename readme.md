@@ -1,5 +1,7 @@
 # Ether 2fa Wallet
 
+WARNING! This experimental, by using this software you assume all risk including complete loss of funds!
+
 A simple implemenation of a multisig wallet which uses 2 accounts:
 
 - A controller account with medium level security (e.g. Metamask)
