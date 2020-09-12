@@ -4,4 +4,5 @@ node_modules
 cache
 artifacts
 temp/testsig.png
-utils/wallet2fa-*.json
+utils/wallet2fa-*.*
+

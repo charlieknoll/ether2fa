@@ -19,7 +19,10 @@ async function main () {
     const sig = await authenticatorWallet.signMessage(ethers.utils.arrayify(nonceHash))
     auth2fa.authTickets.push({ nonce: i, sig })
   }
-  //TODO write to file
+
+
+  //TODO write contract creation bytecode for data param to use with MEW?
+
   console.log("Killphrase: " + auth2fa.killphrase)
   console.log("Killpharse Hash: " + killphraseHash)
   try {

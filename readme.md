@@ -1,6 +1,6 @@
 # Ether 2fa Wallet
 
-WARNING! This experimental, by using this software you assume all risk including complete loss of funds!
+WARNING! This is experimental, by using this software you assume all risk including complete loss of funds!
 
 A simple implemenation of a multisig wallet which uses 2 accounts:
 
@@ -17,10 +17,12 @@ A simple implemenation of a multisig wallet which uses 2 accounts:
 
 ## Dev Todo
 
-- Build auth ticket generator script
+- WIP: Build auth ticket generator script
+- Build QR offline web page
+- Test on BDLR-node
+- Build management dapp
 - Test on ropsten
-- Build QR web page
-- Build website on ipfs
+- Migrate to ipfs
 - "Enhance" metamask to support read-only accounts, intercept signed tx?  (WalletConnect instead?)
 
 ## Feature Todo
